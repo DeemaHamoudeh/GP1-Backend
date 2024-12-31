@@ -67,33 +67,49 @@ const signUp = async (req, res) => {
   try {
     const { username, email, password, confirmPassword, role, plan, condition } = req.body;
 
-    if (!username || !email || !password || !confirmPassword || !role || !plan || !condition) {
+    // Check for required fields
+    if (!username || !email || !password || !confirmPassword || !role || !condition) {
       return res.status(400).json({ message: 'All fields are required' });
     }
 
+    // Password confirmation check
     if (password !== confirmPassword) {
       return res.status(400).json({ message: 'Passwords do not match' });
     }
 
+    // Check if the user already exists
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(409).json({ message: 'User already exists' });
     }
 
+    // Hash the password
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    // Create the user object
     const user = new User({
       username,
       email,
       password: hashedPassword,
       confirmPassword: hashedPassword,
       role,
-      plan,
       condition,
     });
 
+    // Handle role-specific logic
+    if (role === 'Store Owner') {
+      if (!plan) {
+        return res.status(400).json({ message: 'Plan is required for Store Owners' });
+      }
+
+      // Set the plan in the storeOwnerDetails
+      user.additionalDetails.storeOwnerDetails.plan = plan;
+    }
+
+    // Save the user in the database
     await user.save();
 
+    // Generate JWT token
     const token = jwt.sign(
       {
         id: user._id,
@@ -104,6 +120,7 @@ const signUp = async (req, res) => {
       { expiresIn: "1h" }
     );
 
+    // Return success response
     return res.status(201).json({ message: 'User created successfully', user });
   } catch (error) {
     console.error('Error during sign up:', error);

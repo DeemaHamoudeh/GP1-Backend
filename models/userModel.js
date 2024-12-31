@@ -16,7 +16,7 @@ const UserSchema = new mongoose.Schema({
   additionalDetails: {
     storeOwnerDetails: {
       storeIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Store' }], // Array to support multiple stores
-      subscriptionType: { type: String }, // Specific to the store owner
+      plan: { type: String,enum: ['Basic', 'Premium'],  default: null}, // Specific to the store owner
     },
     storeEmployeeDetails: {
       storeId: { type: mongoose.Schema.Types.ObjectId, ref: 'Store' },
