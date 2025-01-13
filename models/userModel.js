@@ -17,6 +17,15 @@ const UserSchema = new mongoose.Schema({
     storeOwnerDetails: {
       storeIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Store' }], // Array to support multiple stores
       plan: { type: String,enum: ['Basic', 'Premium'],  default: null}, // Specific to the store owner
+      paymentDetails: {
+        paymentStatus: {
+          type: String,
+          enum: ['Pending', 'Completed', 'Failed'],
+          default: null, // Tracks payment progress
+        },
+        transactionId: { type: String, default: null }, // Optional transaction ID for payment tracking
+        paymentDate: { type: Date, default: null }, // Stores the date of payment
+      },
     },
     storeEmployeeDetails: {
       storeId: { type: mongoose.Schema.Types.ObjectId, ref: 'Store' },

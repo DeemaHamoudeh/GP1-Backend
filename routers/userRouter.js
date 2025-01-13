@@ -7,7 +7,10 @@ console.log("Router initialized");
 
 // Public routes (accessible without authentication)
 router.post('/login', UserController.login); // Login
+router.get('/signup/payPal-return', UserController.paypalReturn); // 
+router.get('/signup/payPal-cancel', UserController.paypalCancel); 
 router.post('/signup', UserController.signUp); // Sign Up
+
 router.post('/reset-password/request-Email', UserController.emailSubmit); //reset password- first step
 router.post('/reset-password/verify-pin', UserController.pinVerify); //reset password- second step
 router.post('/reset-password/create-password', UserController.createPassword); //reset password- third step

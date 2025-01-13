@@ -4,7 +4,10 @@ const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const sendgrid = require('@sendgrid/mail'); // Import SendGrid package
 const secretKey = process.env.JWT_SECRET; // Use an environment variable for the secret key in production
-
+const paypal = require('../paypalConfig'); // Import PayPal client from your config file
+const checkoutSdk = require('@paypal/checkout-server-sdk');
+const client = require('../paypalConfig'); 
+console.log('PayPal Client:', paypal); 
 if (!secretKey) {
   console.error('JWT_SECRET is not defined in the environment variables');
   process.exit(1); // Exit the process if JWT_SECRET is missing
@@ -61,32 +64,132 @@ const login = async (req, res) => {
     return res.status(500).json({ message: 'Server error' });
   }
 };
+// Function to create PayPal payment
+const createPayPalPayment = async (paypalEmail, plan) => {
+  if (!paypal) {
+    throw new Error('PayPal SDK is not initialized properly');
+  }
 
-// Sign Up functionality
+  console.log('Initializing PayPal payment creation...');
+
+  // Create a new order request
+  const request = new checkoutSdk.orders.OrdersCreateRequest();
+  request.prefer("return=representation"); // Ensure the response contains the created order details
+  request.requestBody({
+    intent: 'CAPTURE',
+    purchase_units: [
+      {
+        description: `Subscription Plan: ${plan}`,
+        amount: {
+          currency_code: 'USD',
+          value: plan === 'Premium' ? '99.99' : '49.99',
+        },
+        payee: {
+          email_address: 'sb-mmw3935275170@business.example.com', // Use sandbox business account email
+        },
+      },
+    ],
+    application_context: {
+      return_url: process.env.PAYPAL_RETURN_URL, // Ensure this is set correctly
+      cancel_url: process.env.PAYPAL_CANCEL_URL, // Ensure this is set correctly
+    },
+  });
+
+  try {
+    const order = await paypal.execute(request);
+
+    // Log the response for debugging
+    console.log('Order Response:', JSON.stringify(order.result, null, 2));
+
+    const approvalUrl = order.result.links.find(link => link.rel === 'approve')?.href;
+    if (!approvalUrl) {
+      throw new Error('Approval URL is missing in PayPal response');
+    }
+
+    return {
+      orderId: order.result.id,
+      approvalUrl,
+    };
+  } catch (err) {
+    console.error('Error creating PayPal payment:', err.message);
+    throw new Error('Error creating PayPal payment: ' + err.message);
+  }
+};
+
+
+
+// Function to capture PayPal payment after the user approves it
+const capturePayPalPayment = async (orderId) => {
+  console.log("Starting payment capture for orderId:", orderId);
+
+  try {
+    // Create a new OrdersCaptureRequest for the given orderId
+    const request = new checkoutSdk.orders.OrdersCaptureRequest(orderId);
+    request.requestBody({}); // Empty body for capture request
+
+    // Execute the request using the PayPal client
+    const capture = await client.execute(request);
+
+    console.log("Capture response:", JSON.stringify(capture.result, null, 2)); // Log the response
+    const captureStatus = capture.result.status;
+
+    console.log("Capture status:", captureStatus);
+    return captureStatus === 'COMPLETED';
+  } catch (err) {
+    console.error("Error capturing PayPal payment for orderId:", orderId, err.message, err.stack); // Detailed error
+    throw new Error('Error capturing PayPal payment: ' + err.message);
+  }
+};
+
+
+// SignUp functionality with PayPal payment verification
 const signUp = async (req, res) => {
   try {
-    const { username, email, password, confirmPassword, role, plan, condition } = req.body;
+    const { username, email, password, confirmPassword, role, plan, condition, paymentMethod, paypalEmail, creditCardDetails } = req.body;
 
-    // Check for required fields
     if (!username || !email || !password || !confirmPassword || !role || !condition) {
       return res.status(400).json({ message: 'All fields are required' });
     }
 
-    // Password confirmation check
     if (password !== confirmPassword) {
       return res.status(400).json({ message: 'Passwords do not match' });
     }
 
-    // Check if the user already exists
+    // Check if a user with the given email already exists
     const existingUser = await User.findOne({ email });
+
     if (existingUser) {
+      if (existingUser.additionalDetails?.storeOwnerDetails?.paymentStatus === 'Pending') {
+        // If the payment is pending, resend the PayPal approval URL
+        if (paymentMethod === 'PayPal') {
+          const paypalOrderId = existingUser.additionalDetails.storeOwnerDetails.paypalOrderId;
+          const approvalUrl = await getApprovalUrlForOrder(paypalOrderId);
+
+          if (!approvalUrl) {
+            return res.status(400).json({ message: 'Unable to retrieve PayPal approval URL' });
+          }
+
+          return res.status(200).json({
+            message: 'Payment is still pending. Redirecting to PayPal.',
+            approvalUrl,
+          });
+        } else {
+          return res.status(400).json({ message: 'Invalid payment method for an existing user.' });
+        }
+      }
+
+      if (existingUser.additionalDetails?.storeOwnerDetails?.paymentStatus === 'Completed') {
+        // If the payment is already completed
+        return res.status(400).json({ message: 'User already exists and payment is completed.' });
+      }
+
+      // If the user exists but doesn't match any of the above conditions
       return res.status(409).json({ message: 'User already exists' });
     }
 
-    // Hash the password
+    // If the user doesn't exist, create a new one
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Create the user object
     const user = new User({
       username,
       email,
@@ -94,22 +197,57 @@ const signUp = async (req, res) => {
       confirmPassword: hashedPassword,
       role,
       condition,
+      additionalDetails: {
+        storeOwnerDetails: {
+          plan,
+          paymentMethod,
+          paypalEmail,
+          paymentStatus: "Pending", // Mark as pending initially
+        },
+      },
     });
 
-    // Handle role-specific logic
-    if (role === 'Store Owner') {
-      if (!plan) {
-        return res.status(400).json({ message: 'Plan is required for Store Owners' });
+    if (role === 'Store Owner' && plan === 'Premium') {
+      if (paymentMethod === 'PayPal') {
+        if (!paypalEmail) {
+          return res.status(400).json({ message: 'PayPal email is required' });
+        }
+    
+        // Save the user to the database before creating the PayPal order
+        await user.save();
+    
+        // Step 1: Create PayPal payment
+        const { orderId, approvalUrl } = await createPayPalPayment(paypalEmail, plan);
+        console.log('Generated PayPal orderId:', orderId);
+    
+        // Update the user's PayPal order ID using findOneAndUpdate
+        const updatedUser = await User.findOneAndUpdate(
+          { email: user.email },
+          {
+            $set: {
+              "additionalDetails.storeOwnerDetails.paymentDetails.transactionId": orderId,
+              "additionalDetails.storeOwnerDetails.paymentDetails.paymentStatus": "Pending",
+            },
+          },
+          { new: true }
+        );
+    
+        console.log('Updated user in DB:', updatedUser.additionalDetails.storeOwnerDetails.paymentDetails.transactionId);
+    
+        return res.status(200).json({
+          message: 'Payment initiated successfully',
+          paypalOrderId: orderId,
+          approvalUrl,
+        });
+      } else {
+        return res.status(400).json({ message: 'Invalid payment method' });
       }
-
-      // Set the plan in the storeOwnerDetails
-      user.additionalDetails.storeOwnerDetails.plan = plan;
     }
+    
 
-    // Save the user in the database
     await user.save();
 
-    // Generate JWT token
+    // Generate JWT Token after successful registration
     const token = jwt.sign(
       {
         id: user._id,
@@ -120,14 +258,120 @@ const signUp = async (req, res) => {
       { expiresIn: "1h" }
     );
 
-    // Return success response
-    return res.status(201).json({ message: 'User created successfully', user });
+    return res.status(201).json({ message: 'User created successfully', user, token });
   } catch (error) {
     console.error('Error during sign up:', error);
     return res.status(500).json({ message: 'Server error' });
   }
 };
 
+
+const getPayPalOrderDetails = async (orderId) => {
+  try {
+    const request = new checkoutSdk.orders.OrdersGetRequest(orderId);
+    const response = await client.execute(request);
+    return response.result; // Contains order details, including status
+  } catch (error) {
+    console.error("Error retrieving PayPal order details:", error.message);
+    throw error;
+  }
+};
+
+
+// Function to handle PayPal return after payment
+// Function to handle PayPal return after payment
+const paypalReturn = async (req, res) => {
+  console.log("PayPal return function started");
+
+  const orderId = req.query.token?.trim(); // Ensure token exists and trim whitespace
+  if (!orderId) {
+    console.error("No orderId provided in the query parameters");
+    return res.status(400).json({ message: "PayPal order ID is required" });
+  }
+
+  console.log("Received orderId:", orderId);
+
+  try {
+    // Step 1: Check the current status of the PayPal order
+    const orderDetails = await getPayPalOrderDetails(orderId);
+
+    if (orderDetails.status === "COMPLETED") {
+      console.log(`Order ${orderId} has already been captured.`);
+      return res.status(200).json({
+        message: "Payment already captured",
+      });
+    }
+
+    if (orderDetails.status !== "APPROVED") {
+      console.error(`Order ${orderId} is not in a valid state for capture: ${orderDetails.status}`);
+      return res.status(400).json({ message: `Order is not approved for capture` });
+    }
+
+    // Step 2: Capture the payment
+    const isPaymentSuccessful = await capturePayPalPayment(orderId);
+
+    if (!isPaymentSuccessful) {
+      console.error("Payment capture failed for orderId:", orderId);
+      return res.status(400).json({ message: "Payment verification failed" });
+    }
+
+    // Step 3: Find the user associated with this orderId
+    const user = await User.findOne({
+      "additionalDetails.storeOwnerDetails.paymentDetails.transactionId": orderId,
+    });
+
+    if (!user) {
+      console.error("User not found for orderId:", orderId);
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Step 4: Update the user's payment status
+    user.additionalDetails.storeOwnerDetails.paymentDetails.paymentStatus = "Completed";
+    await user.save();
+
+    console.log("Payment successfully captured for orderId:", orderId);
+
+    // Step 5: Generate a new token for the user
+    const token = jwt.sign(
+      { id: user._id, role: user.role },
+      secretKey,
+      { expiresIn: "1h" }
+    );
+
+    return res.status(200).json({
+      message: "Payment successful, account activated",
+      token,
+    });
+  } catch (error) {
+    console.error("Error during PayPal return:", error.message);
+    return res.status(500).json({ message: "Error processing PayPal payment" });
+  }
+};
+
+
+
+
+
+const paypalCancel = async (req, res) => {
+  try {
+    console.log("PayPal cancel"); // Debugging start
+
+   
+     
+    
+  } catch (error) {
+    console.error("Error during PayPal return handling:", error.message, error.stack); // Print error details
+  
+  }
+};
+
+//here
+// Helper function to simulate Credit Card payment verification (mocked for this example)
+const verifyCreditCardPayment = async (creditCardDetails) => {
+  // In a real-world scenario, you'd make an API call to a payment processor here.
+  // For now, we are mocking a successful payment response
+  return { success: true };
+};
 // Email Submission functionality (using SendGrid)
 const emailSubmit = async (req, res) => {
   try {
@@ -251,4 +495,4 @@ const createPassword = async (req, res) => {
   }
 };
 
-module.exports = { login, signUp, emailSubmit, pinVerify, createPassword};
+module.exports = { login, signUp, emailSubmit, pinVerify, createPassword,paypalReturn,paypalCancel};
