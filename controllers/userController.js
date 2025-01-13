@@ -495,4 +495,151 @@ const createPassword = async (req, res) => {
   }
 };
 
-module.exports = { login, signUp, emailSubmit, pinVerify, createPassword,paypalReturn,paypalCancel};
+// دالة لجلب بيانات المستخدم
+const getUserInfo = async (req, res) => {
+  try {
+    // استخرج التوكين من الهيدر
+    const userId = req.user.id;
+
+    // ابحث عن المستخدم في قاعدة البيانات
+    const user = await User.findById(userId).select('-password'); // لا تعرض كلمة المرور
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: user,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server Error' });
+  }
+};
+const getSetupGuide = async (req, res) => {
+  try {
+    // Extract user ID from the request (provided by authMiddleware)
+    const userId = req.user.id;
+
+    // Find the user in the database
+    const user = await User.findById(userId).select(
+      'role additionalDetails.storeOwnerDetails.setupGuide'
+    );
+
+    // If the user doesn't exist
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    // Check if the user is a Store Owner
+    if (user.role !== 'Store Owner') {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. Only Store Owners can access the setup guide.',
+      });
+    }
+
+    // Attach titles to the setup guide steps
+    const titles = {
+      1: 'Name your product',
+      2: 'Add your product',
+      3: 'Customize your online store',
+      4: 'Add pages to your store',
+      5: 'Organize navigation',
+      6: 'Shipment and delivery',
+      7: 'Payment setup',
+    };
+
+    const setupGuide = user.additionalDetails.storeOwnerDetails.setupGuide.map(
+      (step) => ({
+        stepId: step.stepId,
+        title: titles[step.stepId] || 'Untitled Step',
+        isCompleted: step.isCompleted,
+      })
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: setupGuide,
+    });
+  } catch (error) {
+    console.error('Error fetching setup guide:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+const updateSetupGuide = async (req, res) => {
+  try {
+    const userId = req.user.id; // Extract user ID from the middleware
+    const { stepId } = req.params; // Extract stepId from the request parameters
+    const { isCompleted } = req.body; // Extract isCompleted from the request body
+
+    if (typeof isCompleted !== 'boolean') {
+      return res.status(400).json({
+        success: false,
+        message: 'isCompleted must be a boolean value.',
+      });
+    }
+
+    // Find the user
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    // Ensure the user is a store owner
+    if (user.role !== 'Store Owner') {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. Only Store Owners can update the setup guide.',
+      });
+    }
+
+    // Find the step in the setup guide
+    const setupGuide = user.additionalDetails.storeOwnerDetails.setupGuide;
+    const stepToUpdate = setupGuide.find((step) => step.stepId === parseInt(stepId));
+
+    if (!stepToUpdate) {
+      return res.status(404).json({
+        success: false,
+        message: `Step with ID ${stepId} not found in the setup guide.`,
+      });
+    }
+
+    // Update the step's status
+    stepToUpdate.isCompleted = isCompleted;
+
+    // Save the user document
+    await user.save();
+
+    // Attach titles to the setup guide steps
+    const titles = {
+      1: 'Name your product',
+      2: 'Add your product',
+      3: 'Customize your online store',
+      4: 'Add pages to your store',
+      5: 'Organize navigation',
+      6: 'Shipment and delivery',
+      7: 'Payment setup',
+    };
+
+    const updatedGuide = setupGuide.map((step) => ({
+      stepId: step.stepId,
+      title: titles[step.stepId] || 'Untitled Step',
+      isCompleted: step.isCompleted,
+    }));
+
+    return res.status(200).json({
+      success: true,
+      message: `Step ${stepId} updated successfully.`,
+      data: updatedGuide,
+    });
+  } catch (error) {
+    console.error('Error updating setup guide:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+
+
+module.exports = { login, signUp, emailSubmit, pinVerify, createPassword,paypalReturn,paypalCancel,getUserInfo,getSetupGuide,updateSetupGuide};
