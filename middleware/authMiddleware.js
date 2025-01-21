@@ -18,6 +18,7 @@ const authenticateToken = async (req, res, next) => {
     if (!user) {
       return res.status(404).json({ message: 'User not found.' });
     }
+    console.log("arrive here");
 
     req.user = { id: user._id, role: user.role }; // Attach user details to the request
     next();

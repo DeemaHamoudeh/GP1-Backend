@@ -1,4 +1,5 @@
 const User = require('../models/userModel');
+const Store = require("../models/storeModel");
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
@@ -142,7 +143,6 @@ const capturePayPalPayment = async (orderId) => {
 };
 
 
-// SignUp functionality with PayPal payment verification
 const signUp = async (req, res) => {
   try {
     const { username, email, password, confirmPassword, role, plan, condition, paymentMethod, paypalEmail, creditCardDetails } = req.body;
@@ -155,42 +155,18 @@ const signUp = async (req, res) => {
       return res.status(400).json({ message: 'Passwords do not match' });
     }
 
-    // Check if a user with the given email already exists
+    // Check if user exists
     const existingUser = await User.findOne({ email });
 
     if (existingUser) {
-      if (existingUser.additionalDetails?.storeOwnerDetails?.paymentStatus === 'Pending') {
-        // If the payment is pending, resend the PayPal approval URL
-        if (paymentMethod === 'PayPal') {
-          const paypalOrderId = existingUser.additionalDetails.storeOwnerDetails.paypalOrderId;
-          const approvalUrl = await getApprovalUrlForOrder(paypalOrderId);
-
-          if (!approvalUrl) {
-            return res.status(400).json({ message: 'Unable to retrieve PayPal approval URL' });
-          }
-
-          return res.status(200).json({
-            message: 'Payment is still pending. Redirecting to PayPal.',
-            approvalUrl,
-          });
-        } else {
-          return res.status(400).json({ message: 'Invalid payment method for an existing user.' });
-        }
-      }
-
-      if (existingUser.additionalDetails?.storeOwnerDetails?.paymentStatus === 'Completed') {
-        // If the payment is already completed
-        return res.status(400).json({ message: 'User already exists and payment is completed.' });
-      }
-
-      // If the user exists but doesn't match any of the above conditions
       return res.status(409).json({ message: 'User already exists' });
     }
 
-    // If the user doesn't exist, create a new one
+    // Hash the password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    const user = new User({
+    // Create user
+    const newUser = new User({
       username,
       email,
       password: hashedPassword,
@@ -203,26 +179,52 @@ const signUp = async (req, res) => {
           paymentMethod,
           paypalEmail,
           paymentStatus: "Pending", // Mark as pending initially
+          storeIds: [] // Ensure storeIds array is initialized
         },
       },
     });
 
+    let newStore = null; // To store store data if created
+
+    // ✅ If user is Store Owner, create a Store automatically
+    if (role === 'Store Owner') {
+      console.log("🚀 Creating store for store owner...");
+
+      newStore = new Store({
+        ownerId: newUser._id, // Link store to user
+        name: `${username}'s Store`, // Default store name
+        email: email,
+        phone: "",
+        logo: "",
+        description: "",
+        address: { city: "", zipCode: "", country: "" },
+        categories: [],
+      });
+
+      await newStore.save(); // Save store to database
+      console.log("✅ Store saved:", newStore._id);
+
+      // 🔹 Store the store ID in the user's additionalDetails
+      newUser.additionalDetails.storeOwnerDetails.storeIds.push(newStore._id);
+    }
+
+    // ✅ Handle Payment for Premium Plan Users
     if (role === 'Store Owner' && plan === 'Premium') {
       if (paymentMethod === 'PayPal') {
         if (!paypalEmail) {
           return res.status(400).json({ message: 'PayPal email is required' });
         }
-    
-        // Save the user to the database before creating the PayPal order
-        await user.save();
-    
-        // Step 1: Create PayPal payment
+
+        // Step 1: Save the user first before initiating payment
+        await newUser.save();
+
+        // Step 2: Create PayPal payment
         const { orderId, approvalUrl } = await createPayPalPayment(paypalEmail, plan);
         console.log('Generated PayPal orderId:', orderId);
-    
-        // Update the user's PayPal order ID using findOneAndUpdate
+
+        // Step 3: Update the user's payment details
         const updatedUser = await User.findOneAndUpdate(
-          { email: user.email },
+          { email: newUser.email },
           {
             $set: {
               "additionalDetails.storeOwnerDetails.paymentDetails.transactionId": orderId,
@@ -231,9 +233,10 @@ const signUp = async (req, res) => {
           },
           { new: true }
         );
-    
+
         console.log('Updated user in DB:', updatedUser.additionalDetails.storeOwnerDetails.paymentDetails.transactionId);
-    
+
+        // Step 4: Return PayPal Approval URL
         return res.status(200).json({
           message: 'Payment initiated successfully',
           paypalOrderId: orderId,
@@ -243,39 +246,32 @@ const signUp = async (req, res) => {
         return res.status(400).json({ message: 'Invalid payment method' });
       }
     }
-    
 
-    await user.save();
+    // ✅ Save user after assigning store ID
+    await newUser.save();
+    console.log("✅ User saved with Store ID:", newUser.additionalDetails.storeOwnerDetails.storeIds);
 
-    // Generate JWT Token after successful registration
+    // 🔹 Generate JWT Token
     const token = jwt.sign(
-      {
-        id: user._id,
-        role: user.role,
-        condition: user.condition,
-      },
-      secretKey,
+      { id: newUser._id, role: newUser.role, condition: newUser.condition },
+      process.env.JWT_SECRET,
       { expiresIn: "1h" }
     );
 
-    return res.status(201).json({ message: 'User created successfully', user, token });
+    // ✅ Return user details + store details (if created)
+    return res.status(201).json({
+      message: 'User created successfully',
+      user: newUser,
+      store: newStore, // Store details included if they are a Store Owner
+      token
+    });
+
   } catch (error) {
-    console.error('Error during sign up:', error);
+    console.error('❌ Error during sign up:', error);
     return res.status(500).json({ message: 'Server error' });
   }
 };
 
-
-const getPayPalOrderDetails = async (orderId) => {
-  try {
-    const request = new checkoutSdk.orders.OrdersGetRequest(orderId);
-    const response = await client.execute(request);
-    return response.result; // Contains order details, including status
-  } catch (error) {
-    console.error("Error retrieving PayPal order details:", error.message);
-    throw error;
-  }
-};
 
 
 // Function to handle PayPal return after payment
