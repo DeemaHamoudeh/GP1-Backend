@@ -7,24 +7,42 @@ const UserSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
   confirmPassword: { type: String, required: true },
-  role: { type: String, enum: ['Store Owner', 'storeEmployee', 'appStaff', 'customer'], required: true },
+  role: {
+    type: String,
+    enum: ['Store Owner', 'storeEmployee', 'appStaff', 'customer'],
+    required: true,
+  },
   phone: { type: String, default: null },
   country: { type: String, default: null },
   dob: { type: Date, default: null },
   image: { type: String, default: null },
-  condition: { type: String, enum: ['Colorblind', 'Blind', 'Low Vision', 'Elderly', 'None'], required: true },
+  condition: {
+    type: String,
+    enum: ['Colorblind', 'Blind', 'Low Vision', 'Elderly', 'None'],
+    required: true,
+  },
   additionalDetails: {
     storeOwnerDetails: {
-      storeIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Store' }], // Array to support multiple stores
-      plan: { type: String,enum: ['Basic', 'Premium'],  default: null}, // Specific to the store owner
+      storeIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Store' }],
+      plan: { type: String, enum: ['Basic', 'Premium'], default: null },
       paymentDetails: {
         paymentStatus: {
           type: String,
           enum: ['Pending', 'Completed', 'Failed'],
-          default: null, // Tracks payment progress
+          default: null,
         },
-        transactionId: { type: String, default: null }, // Optional transaction ID for payment tracking
-        paymentDate: { type: Date, default: null }, // Stores the date of payment
+        transactionId: { type: String, default: null },
+        paymentDate: { type: Date, default: null },
+      },
+      setupGuide: {
+        type: [
+          {
+            stepId: { type: Number, required: true },
+            title: { type: String, required: true }, // Add title field
+            isCompleted: { type: Boolean, default: false },
+          },
+        ],
+        default: undefined, // This field is only initialized for Store Owners
       },
     },
     storeEmployeeDetails: {
@@ -55,6 +73,27 @@ const UserSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
   username: { type: String, required: true, unique: true },
+});
+
+// Pre-save hook to initialize setup guide only for Store Owners
+UserSchema.pre('save', function (next) {
+  if (
+    this.isNew &&
+    this.role === 'Store Owner' &&
+    (!this.additionalDetails.storeOwnerDetails.setupGuide ||
+      this.additionalDetails.storeOwnerDetails.setupGuide.length === 0)
+  ) {
+    this.additionalDetails.storeOwnerDetails.setupGuide = [
+      { stepId: 1, title: 'Name your product', isCompleted: false },
+      { stepId: 2, title: 'Add your product', isCompleted: false },
+      { stepId: 3, title: 'Customize your online store', isCompleted: false },
+      { stepId: 4, title: 'Add pages to your store', isCompleted: false },
+      { stepId: 5, title: 'Organize navigation', isCompleted: false },
+      { stepId: 6, title: 'Shipment and delivery', isCompleted: false },
+      { stepId: 7, title: 'Payment setup', isCompleted: false },
+    ];
+  }
+  next();
 });
 
 // Create the User model
