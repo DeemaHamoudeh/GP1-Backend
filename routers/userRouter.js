@@ -15,6 +15,14 @@ router.post('/reset-password/request-Email', UserController.emailSubmit); //rese
 router.post('/reset-password/verify-pin', UserController.pinVerify); //reset password- second step
 router.post('/reset-password/create-password', UserController.createPassword); //reset password- third step
 
+ 
+
+router.get('/dashBoard/user-info', authenticateToken, UserController.getUserInfo); 
+router.get('/dashBoard/setup-guide',authenticateToken, UserController.getSetupGuide );
+router.put('/dashBoard/setup-guide/:stepId', authenticateToken, UserController.updateSetupGuide);
+
+
+
 router.get('/', (req, res) => {
   res.json({ message: 'API is working!' });
 });
