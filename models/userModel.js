@@ -18,9 +18,17 @@ const UserSchema = new mongoose.Schema({
   image: { type: String, default: null },
   condition: {
     type: String,
-    enum: ['Colorblind', 'Blind', 'Low Vision', 'Elderly', 'None'],
+    enum: ['colorblind', 'low_vision', 'elderly', 'None'],
     required: true,
   },
+  typecolorblind: {
+    type: String,
+    enum: ["protanomaly", "deuteranomaly", "tritanomaly", "protanopia", "deuteranopia", "tritanopia", "achromatopsia", "achromatomaly", "None" ], default: null,
+    // required: true,
+  },
+  firstSecurityQuestion: {type: String, default: null},
+  secondSecurityQuestion: {type: String, default: null},
+  thirdSecurityQuestion: {type: String, default: null},
   additionalDetails: {
     storeOwnerDetails: {
       storeIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Store' }],

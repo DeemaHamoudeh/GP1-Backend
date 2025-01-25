@@ -7,8 +7,8 @@ const sendgrid = require('@sendgrid/mail'); // Import SendGrid package
 const secretKey = process.env.JWT_SECRET; // Use an environment variable for the secret key in production
 const paypal = require('../paypalConfig'); // Import PayPal client from your config file
 const checkoutSdk = require('@paypal/checkout-server-sdk');
-const client = require('../paypalConfig'); 
-console.log('PayPal Client:', paypal); 
+const client = require('../paypalConfig');
+console.log('PayPal Client:', paypal);
 if (!secretKey) {
   console.error('JWT_SECRET is not defined in the environment variables');
   process.exit(1); // Exit the process if JWT_SECRET is missing
@@ -145,9 +145,9 @@ const capturePayPalPayment = async (orderId) => {
 
 const signUp = async (req, res) => {
   try {
-    const { username, email, password, confirmPassword, role, plan, condition, paymentMethod, paypalEmail, creditCardDetails } = req.body;
+    const { username, email, password, confirmPassword, role, plan, condition, typecolorblind, firstSecurityQuestion, secondSecurityQuestion, thirdSecurityQuestion, paymentMethod, paypalEmail, creditCardDetails } = req.body;
 
-    if (!username || !email || !password || !confirmPassword || !role || !condition) {
+    if (!username || !email || !password || !confirmPassword || !role || !condition ) {
       return res.status(400).json({ message: 'All fields are required' });
     }
 
@@ -173,6 +173,10 @@ const signUp = async (req, res) => {
       confirmPassword: hashedPassword,
       role,
       condition,
+      typecolorblind,
+      firstSecurityQuestion,
+      secondSecurityQuestion,
+      thirdSecurityQuestion,
       additionalDetails: {
         storeOwnerDetails: {
           plan,
@@ -183,6 +187,9 @@ const signUp = async (req, res) => {
         },
       },
     });
+    console.log(typecolorblind);
+    console.log(firstSecurityQuestion);
+    console.log(req.body);
 
     let newStore = null; // To store store data if created
 
@@ -352,12 +359,12 @@ const paypalCancel = async (req, res) => {
   try {
     console.log("PayPal cancel"); // Debugging start
 
-   
-     
-    
+
+
+
   } catch (error) {
     console.error("Error during PayPal return handling:", error.message, error.stack); // Print error details
-  
+
   }
 };
 
