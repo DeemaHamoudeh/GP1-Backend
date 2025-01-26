@@ -541,10 +541,8 @@ const getSetupGuide = async (req, res) => {
       1: 'Name your product',
       2: 'Add your product',
       3: 'Customize your online store',
-      4: 'Add pages to your store',
-      5: 'Organize navigation',
-      6: 'Shipment and delivery',
-      7: 'Payment setup',
+      4: 'Shipment and delivery',
+      5: 'Payment setup',
     };
 
     const setupGuide = user.additionalDetails.storeOwnerDetails.setupGuide.map(

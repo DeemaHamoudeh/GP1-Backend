@@ -1,14 +1,16 @@
 const express = require('express');
-const userRoutes = require('./routers/userRouter'); // Import your user routes
-const storeRoutes = require('./routers/storeRouter'); // Import your user routes
+const userRoutes = require('./routers/userRouter');
+const storeRoutes = require('./routers/storeRouter'); 
+const productRoutes = require('./routers/productRouter'); 
 const app = express();
 
 // Middleware
 app.use(express.json()); // Parse incoming JSON requests
 console.log('beforee');
 // Routes
-app.use('/storeMaster/users', userRoutes); // Prefix for all user-related routes
-app.use('/storeMaster/store', storeRoutes); // Prefix for all user-related routes
+app.use('/storeMaster/users', userRoutes); 
+app.use('/storeMaster/store', storeRoutes); 
+app.use('/storeMaster/product', productRoutes); 
 console.log('after');
-module.exports = app; // Export the app to use it in server.js
+module.exports = app; 
 
