@@ -538,11 +538,11 @@ const getSetupGuide = async (req, res) => {
 
     // Attach titles to the setup guide steps
     const titles = {
-      1: 'Name your product',
-      2: 'Add your product',
+      1: 'Name your store',
+      2: 'Add your products',
       3: 'Customize your online store',
       4: 'Shipment and delivery',
-      5: 'Payment setup',
+     
     };
 
     const setupGuide = user.additionalDetails.storeOwnerDetails.setupGuide.map(
@@ -608,13 +608,11 @@ const updateSetupGuide = async (req, res) => {
 
     // Attach titles to the setup guide steps
     const titles = {
-      1: 'Name your product',
-      2: 'Add your product',
+      1: 'Name your store',
+      2: 'Add your products',
       3: 'Customize your online store',
-      4: 'Add pages to your store',
-      5: 'Organize navigation',
-      6: 'Shipment and delivery',
-      7: 'Payment setup',
+      4: 'Shipment and delivery',
+     
     };
 
     const updatedGuide = setupGuide.map((step) => ({

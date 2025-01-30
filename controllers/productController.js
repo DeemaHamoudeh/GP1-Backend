@@ -10,21 +10,17 @@ const addProduct = async (req, res) => {
     const { title, description, category, price, images, status, variants } = req.body;
     const userId = req.user.id;
 
-    // ✅ البحث عن المتجر المرتبط بالمستخدم
     const store = await Store.findOne({ ownerId: userId });
     if (!store) {
       return res.status(404).json({ success: false, message: "Store not found for this user!" });
     }
 
     const storeId = store._id;
-    console.log("🛍️ Linked Store ID:", storeId);
 
-    // ✅ التحقق من الحقول المطلوبة
     if (!title || !category || !price || !images || images.length === 0) {
       return res.status(400).json({ success: false, message: "Missing required fields or images!" });
     }
 
-    // ✅ إنشاء المنتج الجديد
     const newProduct = new Product({
       storeId,
       title,
@@ -37,15 +33,13 @@ const addProduct = async (req, res) => {
       variantCombinations: [],
     });
 
-    // ✅ إنشاء `variantCombinations` بشكل صحيح
     if (variants && variants.length > 0) {
       const variantNames = variants.map((v) => v.name);
       const variantValues = variants.map((v) => v.values);
 
-      // 🛠️ توليد جميع التوليفات الممكنة
       const generateCombinations = (arr, index = 0, current = {}) => {
         if (index === arr.length) {
-          return [current]; // ✅ تأكد من أن كل إدخال هو Object وليس Array
+          return [current];
         }
         let combinations = [];
         for (let value of arr[index]) {
@@ -58,20 +52,28 @@ const addProduct = async (req, res) => {
 
       const combinations = generateCombinations(variantValues);
 
-      // ✅ إضافة `variantCombinations` مع `sku` فريد لكل عنصر
-      newProduct.variantCombinations = combinations.map((combo, index) => ({
-        attributes: combo, // ✅ أصبح الآن Object وليس Array
-        price: price,
-        stock: 0,
-        sku: `${title.replace(/\s+/g, "-").toLowerCase()}-${storeId}-${index}`, // ✅ `SKU` فريد
-        image: null,
-      }));
+      newProduct.variantCombinations = await Promise.all(
+        combinations.map(async (combo, index) => {
+          let generatedSKU = `${title.replace(/\s+/g, "-").toLowerCase()}-${storeId}-${index}-${Date.now()}`;
+
+          // ✅ تأكد من أن `SKU` غير مكرر
+          while (await Product.findOne({ "variantCombinations.sku": generatedSKU })) {
+            generatedSKU = `${title.replace(/\s+/g, "-").toLowerCase()}-${storeId}-${index}-${Date.now()}`;
+          }
+
+          return {
+            attributes: combo,
+            price: price,
+            stock: 0,
+            sku: generatedSKU,
+            image: null,
+          };
+        })
+      );
     }
 
-    // ✅ حساب `totalStock`
     newProduct.totalStock = newProduct.variantCombinations.reduce((sum, variant) => sum + variant.stock, 0);
 
-    // ✅ حفظ المنتج في قاعدة البيانات
     await newProduct.save();
 
     res.status(201).json({ success: true, message: "Product added successfully", product: newProduct });

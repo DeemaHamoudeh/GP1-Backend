@@ -85,10 +85,10 @@ UserSchema.pre('save', function (next) {
   ) {
     this.additionalDetails.storeOwnerDetails.setupGuide = [
       { stepId: 1, title: 'Name your store', isCompleted: false },
-      { stepId: 2, title: 'Add your product', isCompleted: false },
+      { stepId: 2, title: 'Add your products', isCompleted: false },
       { stepId: 3, title: 'Customize your online store', isCompleted: false },
       { stepId: 4, title: 'Shipment and delivery', isCompleted: false },
-      { stepId: 5, title: 'Payment setup', isCompleted: false },
+     
     ];
   }
   next();
