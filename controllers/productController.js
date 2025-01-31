@@ -34,6 +34,8 @@ const addProduct = async (req, res) => {
     });
 
     if (variants && variants.length > 0) {
+      console.log(variants);
+      console.log(variants.length);
       const variantNames = variants.map((v) => v.name);
       const variantValues = variants.map((v) => v.values);
 
@@ -52,25 +54,28 @@ const addProduct = async (req, res) => {
 
       const combinations = generateCombinations(variantValues);
 
-      newProduct.variantCombinations = await Promise.all(
-        combinations.map(async (combo, index) => {
-          let generatedSKU = `${title.replace(/\s+/g, "-").toLowerCase()}-${storeId}-${index}-${Date.now()}`;
+      newProduct.variantCombinations = variants.length > 0
+  ? []
+  : [{
+      attributes: {},
+      price: price,
+      stock: 0,
+      sku: `${title.replace(/\s+/g, "-").toLowerCase()}-${storeId}-${Date.now()}`, // ✅ إضافة SKU فريد
+      image: null
+    }];
 
-          // ✅ تأكد من أن `SKU` غير مكرر
-          while (await Product.findOne({ "variantCombinations.sku": generatedSKU })) {
-            generatedSKU = `${title.replace(/\s+/g, "-").toLowerCase()}-${storeId}-${index}-${Date.now()}`;
-          }
-
-          return {
-            attributes: combo,
-            price: price,
-            stock: 0,
-            sku: generatedSKU,
-            image: null,
-          };
-        })
-      );
     }
+
+    if (newProduct.variantCombinations.length === 0) {
+      newProduct.variantCombinations.push({
+          attributes: {},
+          price: price,
+          stock: 0,
+          sku: `${title.replace(/\s+/g, "-").toLowerCase()}-${storeId}-${Date.now()}`, 
+          image: null
+      });
+  }
+  
 
     newProduct.totalStock = newProduct.variantCombinations.reduce((sum, variant) => sum + variant.stock, 0);
 

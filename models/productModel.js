@@ -47,8 +47,7 @@ const ProductSchema = new mongoose.Schema(
       {
         name: {
           type: String,
-          enum: ["Color", "Size", "Material", "Style", "Custom"],
-          required: true,
+          
         },
         values: [String], // ✅ Example: ["Red", "Blue"], ["S", "M"]
       },
@@ -58,22 +57,22 @@ const ProductSchema = new mongoose.Schema(
         attributes: {
           type: Map, // ✅ Example: { "Color": "Red", "Size": "M" }
           of: String,
-          required: true,
+          
         },
         price: {
           type: Number,
-          required: true,
+         
           min: 0,
         },
         stock: {
           type: Number,
-          required: true,
+          
           min: 0,
         },
         sku: {
           type: String,
-          unique: true, // ✅ Each combination must have a unique SKU
-          required: true,
+          default: null,
+        
         },
         image: {
           type: String, // ✅ Image URL for this variant
